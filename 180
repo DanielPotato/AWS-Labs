@@ -1,0 +1,78 @@
+import boto3
+
+# Create a VPC
+ec2 = boto3.resource('ec2')
+vpc = ec2.create_vpc(CidrBlock='10.0.0.0/16')
+vpc.create_tags(Tags=[{"Key": "Name", "Value": "Lab VPC"}])
+vpc.wait_until_available()
+vpc.modify_attribute(EnableDnsSupport={'Value': True})
+vpc.modify_attribute(EnableDnsHostnames={'Value': True})
+
+# Create a public subnet
+subnet_public = vpc.create_subnet(
+    CidrBlock='10.0.0.0/24',
+    AvailabilityZone='us-east-1a'  # Replace with the desired Availability Zone
+)
+subnet_public.create_tags(Tags=[{"Key": "Name", "Value": "Public Subnet"}])
+subnet_public.meta.client.modify_subnet_attribute(
+    SubnetId=subnet_public.id,
+    MapPublicIpOnLaunch={'Value': True}
+)
+
+# Create a private subnet
+subnet_private = vpc.create_subnet(
+    CidrBlock='10.0.2.0/23',
+    AvailabilityZone='us-east-1a'  # Replace with the desired Availability Zone
+)
+subnet_private.create_tags(Tags=[{"Key": "Name", "Value": "Private Subnet"}])
+
+# Create an internet gateway and attach it to the VPC
+igw = ec2.create_internet_gateway()
+igw.create_tags(Tags=[{"Key": "Name", "Value": "Lab IGW"}])
+vpc.attach_internet_gateway(InternetGatewayId=igw.id)
+
+# Create a public route table
+route_table_public = vpc.create_route_table()
+route_table_public.create_tags(Tags=[{"Key": "Name", "Value": "Public Route Table"}])
+route_table_public.create_route(DestinationCidrBlock='0.0.0.0/0', GatewayId=igw.id)
+route_table_public.associate_with_subnet(SubnetId=subnet_public.id)
+
+# Create a NAT gateway in the public subnet
+nat_gateway = ec2.create_nat_gateway(
+    SubnetId=subnet_public.id,
+    AllocationId='your_allocation_id'  # Replace with the Elastic IP Allocation ID
+)
+
+# Create a private route table
+route_table_private = vpc.create_route_table()
+route_table_private.create_tags(Tags=[{"Key": "Name", "Value": "Private Route Table"}])
+route_table_private.create_route(DestinationCidrBlock='0.0.0.0/0', NatGatewayId=nat_gateway.id)
+route_table_private.associate_with_subnet(SubnetId=subnet_private.id)
+
+# Launch a bastion server in the public subnet
+bastion_server = ec2.create_instances(
+    ImageId='ami-xxxxxxxxxxxxxxxxx',  # Replace with the desired Amazon Linux AMI
+    InstanceType='t3.micro',
+    MinCount=1,
+    MaxCount=1,
+    NetworkInterfaces=[{
+        'SubnetId': subnet_public.id,
+        'Groups': ['your_security_group_id']  # Replace with the desired security group ID
+    }]
+)
+
+# Optional: Launch an EC2 instance in the private subnet (challenge)
+private_instance = ec2.create_instances(
+    ImageId='ami-xxxxxxxxxxxxxxxxx',  # Replace with the desired Amazon Linux AMI
+    InstanceType='t3.micro',
+    MinCount=1,
+    MaxCount=1,
+    NetworkInterfaces=[{
+        'SubnetId': subnet_private.id,
+        'Groups': ['your_security_group_id']  # Replace with the desired security group ID
+    }],
+    UserData="#!/bin/bash\n"
+             "echo 'lab-password' | passwd ec2-user --stdin\n"
+             "sed -i 's|[#]*PasswordAuthentication no|PasswordAuthentication yes|g' /etc/ssh/sshd_config\n"
+             "systemctl restart sshd.service"
+)
