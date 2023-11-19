@@ -1,0 +1,49 @@
+import boto3
+import time
+
+# Replace these values with your actual ones
+aws_access_key_id = 'YOUR_ACCESS_KEY'
+aws_secret_access_key = 'YOUR_SECRET_KEY'
+region = 'us-west-2'
+web_server_ip = 'WEB_SERVER_IP'
+web_server_sg_id = 'WEB_SERVER_SECURITY_GROUP_ID'
+vpc1_id = 'VPC1_ID'
+vpc1_subnet_id = 'VPC1_SUBNET_ID'
+flow_log_bucket_name = 'YOUR_FLOW_LOG_BUCKET_NAME'
+
+# Create an S3 client
+s3_client = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region_name=region)
+
+# Create a bucket for flow logs
+bucket_name = f'flowlog{int(time.time())}'  # Use a unique bucket name
+s3_client.create_bucket(Bucket=bucket_name, CreateBucketConfiguration={'LocationConstraint': region})
+
+# Get VPC1 ID
+ec2_client = boto3.client('ec2', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region_name=region)
+response = ec2_client.describe_vpcs(
+    Filters=[{'Name': 'tag:Name', 'Values': ['VPC1']}]
+)
+vpc1_id = response['Vpcs'][0]['VpcId']
+
+# Create VPC Flow Logs
+flow_logs_response = ec2_client.create_flow_logs(
+    ResourceIds=[vpc1_id],
+    ResourceType='VPC',
+    TrafficType='ALL',
+    LogDestinationType='s3',
+    LogDestination=f'arn:aws:s3::{bucket_name}',
+)
+
+# Wait for the flow log to be active
+flow_log_id = flow_logs_response['FlowLogIds'][0]
+while True:
+    response = ec2_client.describe_flow_logs(Filters=[{'Name': 'flow-log-id', 'Values': [flow_log_id]}])
+    if response['FlowLogs'][0]['FlowLogStatus'] == 'ACTIVE':
+        break
+    time.sleep(5)
+
+# Troubleshoot VPC configuration
+# ... Continue with the troubleshooting steps using Boto3 ...
+
+# Analyze flow logs
+# ... Continue with the flow log analysis steps using Boto3 ...
