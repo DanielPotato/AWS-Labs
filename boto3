@@ -1,0 +1,71 @@
+
+import boto3
+
+# Specify the region and other details
+region = 'your_region'
+vpc_id = 'your_vpc_id'
+security_group_name = 'CafeDatabaseSG'
+availability_zone_1 = 'your_availability_zone_1'
+availability_zone_2 = 'your_availability_zone_2'
+
+# Create an EC2 client
+ec2 = boto3.client('ec2', region_name=region)
+
+# Create a security group for the RDS instance
+response_sg = ec2.create_security_group(
+    GroupName=security_group_name,
+    Description='Security group for Cafe database',
+    VpcId=vpc_id
+)
+
+# Get the security group ID
+security_group_id = response_sg['GroupId']
+
+# Authorize inbound rule for MySQL traffic
+ec2.authorize_security_group_ingress(
+    GroupId=security_group_id,
+    IpPermissions=[
+        {
+            'IpProtocol': 'tcp',
+            'FromPort': 3306,
+            'ToPort': 3306,
+            'UserIdGroupPairs': [
+                {
+                    'GroupId': 'CafeSecurityGroup Group ID'  # Replace with your CafeSecurityGroup Group ID
+                },
+            ]
+        },
+    ]
+)
+
+# Create CafeDB Private Subnet 1
+subnet_response_1 = ec2.create_subnet(
+    VpcId=vpc_id,
+    CidrBlock='10.200.2.0/23',
+    AvailabilityZone=availability_zone_1
+)
+
+subnet_id_1 = subnet_response_1['Subnet']['SubnetId']
+
+# Create CafeDB Private Subnet 2
+subnet_response_2 = ec2.create_subnet(
+    VpcId=vpc_id,
+    CidrBlock='10.200.10.0/23',
+    AvailabilityZone=availability_zone_2
+)
+
+subnet_id_2 = subnet_response_2['Subnet']['SubnetId']
+
+# Create CafeDB Subnet Group
+rds = boto3.client('rds', region_name=region)
+
+subnet_group_response = rds.create_db_subnet_group(
+    DBSubnetGroupName='CafeDB Subnet Group',
+    DBSubnetGroupDescription='DB subnet group for Cafe',
+    SubnetIds=[subnet_id_1, subnet_id_2]
+)
+
+print("Security Group ID:", security_group_id)
+print("Subnet ID 1:", subnet_id_1)
+print("Subnet ID 2:", subnet_id_2)
+print("DB Subnet Group Name:", subnet_group_response['DBSubnetGroup']['DBSubnetGroupName'])
