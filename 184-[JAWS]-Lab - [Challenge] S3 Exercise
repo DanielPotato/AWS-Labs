@@ -1,0 +1,38 @@
+import boto3
+
+# Replace these values with your own
+aws_access_key_id = 'YOUR_ACCESS_KEY_ID'
+aws_secret_access_key = 'YOUR_SECRET_ACCESS_KEY'
+aws_region = 'us-west-2'
+
+# Create an S3 client
+s3_client = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region_name=aws_region)
+
+# Task 1: Create an S3 bucket
+bucket_name = 'your-unique-bucket-name'
+
+s3_client.create_bucket(Bucket=bucket_name)
+
+# Task 2: Upload an object into the bucket
+object_key = 'example-object.txt'
+content = 'Hello, this is the content of the object!'
+
+s3_client.put_object(Body=content, Bucket=bucket_name, Key=object_key)
+
+# Task 3: Access the object by using a web browser
+object_url = f'https://{bucket_name}.s3-{aws_region}.amazonaws.com/{object_key}'
+print(f'Access the object through this URL: {object_url}')
+
+# Task 4: Make the object publicly accessible
+s3_client.put_object_acl(ACL='public-read', Bucket=bucket_name, Key=object_key)
+
+# Task 5: Access the object by using a web browser (publicly accessible)
+public_object_url = f'https://{bucket_name}.s3-{aws_region}.amazonaws.com/{object_key}'
+print(f'Access the publicly accessible object through this URL: {public_object_url}')
+
+# Task 6: List the contents of the S3 bucket by using the AWS CLI
+s3_objects = s3_client.list_objects(Bucket=bucket_name)['Contents']
+
+print('Contents of the S3 bucket:')
+for s3_object in s3_objects:
+    print(f'{s3_object["Key"]} - Last Modified: {s3_object["LastModified"]}')
