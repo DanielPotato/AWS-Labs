@@ -1,0 +1,171 @@
+import boto3
+import time
+
+# Create an EBS volume
+def create_ebs_volume():
+    ec2 = boto3.resource('ec2')
+
+    # Replace with your instance ID and availability zone
+    instance_id = 'your_instance_id'
+    availability_zone = 'your_availability_zone'
+
+    volume = ec2.create_volume(
+        AvailabilityZone=availability_zone,
+        Size=1,
+        VolumeType='gp2',
+        TagSpecifications=[
+            {
+                'ResourceType': 'volume',
+                'Tags': [
+                    {
+                        'Key': 'Name',
+                        'Value': 'My Volume'
+                    },
+                ]
+            },
+        ]
+    )
+
+    # Wait for the volume to be available
+    volume.wait_until_available()
+
+    return volume
+
+# Attach the volume to an EC2 instance
+def attach_volume(volume_id, instance_id):
+    ec2 = boto3.resource('ec2')
+
+    volume = ec2.Volume(volume_id)
+
+    # Replace with your device name
+    device_name = '/dev/sdf'
+
+    volume.attach_to_instance(
+        InstanceId=instance_id,
+        Device=device_name
+    )
+
+    # Wait for the volume to be in-use
+    volume.wait_until_in_use()
+
+# Create a snapshot of the EBS volume
+def create_snapshot(volume_id):
+    ec2 = boto3.resource('ec2')
+
+    volume = ec2.Volume(volume_id)
+
+    snapshot = volume.create_snapshot(
+        Description='My Snapshot',
+        TagSpecifications=[
+            {
+                'ResourceType': 'snapshot',
+                'Tags': [
+                    {
+                        'Key': 'Name',
+                        'Value': 'My Snapshot'
+                    },
+                ]
+            },
+        ]
+    )
+
+    # Wait for the snapshot to be completed
+    snapshot.wait_until_completed()
+
+    return snapshot
+
+# Restore volume from snapshot
+def restore_volume(snapshot_id, availability_zone):
+    ec2 = boto3.resource('ec2')
+
+    snapshot = ec2.Snapshot(snapshot_id)
+
+    # Create a volume from the snapshot
+    restored_volume = snapshot.create_volume(
+        AvailabilityZone=availability_zone,
+        TagSpecifications=[
+            {
+                'ResourceType': 'volume',
+                'Tags': [
+                    {
+                        'Key': 'Name',
+                        'Value': 'Restored Volume'
+                    },
+                ]
+            },
+        ]
+    )
+
+    # Wait for the volume to be available
+    restored_volume.wait_until_available()
+
+    return restored_volume
+
+# Attach restored volume to EC2 instance
+def attach_restored_volume(volume_id, instance_id):
+    ec2 = boto3.resource('ec2')
+
+    volume = ec2.Volume(volume_id)
+
+    # Replace with your device name
+    device_name = '/dev/sdg'
+
+    volume.attach_to_instance(
+        InstanceId=instance_id,
+        Device=device_name
+    )
+
+    # Wait for the volume to be in-use
+    volume.wait_until_in_use()
+
+# Main function to execute the lab tasks
+def main():
+    # Task 1: Create an EBS volume
+    ebs_volume = create_ebs_volume()
+    print(f"Created EBS Volume ID: {ebs_volume.id}")
+
+    # Task 2: Attach the volume to an EC2 instance
+    # Replace 'your_instance_id' with the actual EC2 instance ID
+    attach_volume(ebs_volume.id, 'your_instance_id')
+    print(f"Attached EBS Volume {ebs_volume.id} to EC2 instance")
+
+    # Task 3: Connecting to the EC2 instance (manual step)
+
+    # Task 4: Create and configure the file system
+    # (Assuming the EC2 instance is already connected)
+    print("Assuming EC2 instance is connected.")
+    print("Running commands on EC2 instance:")
+    print("df -h")
+    print("sudo mkfs -t ext3 /dev/sdf")
+    print("sudo mkdir /mnt/data-store")
+    print("sudo mount /dev/sdf /mnt/data-store")
+    print("echo \"/dev/sdf   /mnt/data-store ext3 defaults,noatime 1 2\" | sudo tee -a /etc/fstab")
+    print("cat /etc/fstab")
+    print("df -h")
+    print("sudo sh -c \"echo some text has been written > /mnt/data-store/file.txt\"")
+    print("cat /mnt/data-store/file.txt")
+
+    # Task 5: Create an Amazon EBS snapshot
+    snapshot = create_snapshot(ebs_volume.id)
+    print(f"Created EBS Snapshot ID: {snapshot.id}")
+
+    # Task 6: Restore the Amazon EBS snapshot
+    # Task 6.1: Creating a volume by using the snapshot
+    restored_volume = restore_volume(snapshot.id, 'your_availability_zone')
+    print(f"Restored EBS Volume ID: {restored_volume.id}")
+
+    # Task 6.2: Attaching the restored volume to the EC2 instance
+    # Replace 'your_instance_id' with the actual EC2 instance ID
+    attach_restored_volume(restored_volume.id, 'your_instance_id')
+    print(f"Attached Restored EBS Volume {restored_volume.id} to EC2 instance")
+
+    # Task 6.3: Mounting the restored volume
+    # (Assuming the EC2 instance is already connected)
+    print("Assuming EC2 instance is connected.")
+    print("Running commands on EC2 instance:")
+    print("sudo mkdir /mnt/data-store2")
+    print("sudo mount /dev/sdg /mnt/data-store2")
+    print("ls /mnt/data-store2/file.txt")
+
+if __name__ == "__main__":
+    main()
