@@ -1,0 +1,101 @@
+import boto3
+import time
+
+# Define your region and EC2 instance name
+region = 'us-west-2'
+instance_name = 'Processor'
+
+# Create EC2 and EBS clients
+ec2_client = boto3.client('ec2', region_name=region)
+ebs_client = boto3.client('ec2', region_name=region)
+
+# Task 1: Creating and configuring resources
+
+# Task 1.1: Create an S3 bucket
+s3_client = boto3.client('s3', region_name=region)
+bucket_name = 'your-unique-s3-bucket-name'
+
+s3_client.create_bucket(Bucket=bucket_name)
+
+# Task 1.2: Attach instance profile to Processor
+instance_id = ec2_client.describe_instances(
+    Filters=[{'Name': 'tag:Name', 'Values': [instance_name]}]
+)['Reservations'][0]['Instances'][0]['InstanceId']
+
+# Assuming you have a role named 'S3BucketAccess' created in your AWS account
+role_name = 'S3BucketAccess'
+
+# Attach the IAM role to the EC2 instance
+ec2_client.associate_iam_instance_profile(
+    IamInstanceProfile={'Name': role_name},
+    InstanceId=instance_id
+)
+
+# Task 2: Taking snapshots of your instance
+
+# Task 2.1: Connecting to the Command Host EC2 instance (Assuming you have EC2 Instance Connect set up)
+
+# Task 2.2: Taking an initial snapshot
+volume_id = ec2_client.describe_instances(
+    Filters=[{'Name': 'tag:Name', 'Values': [instance_name]}]
+)['Reservations'][0]['Instances'][0]['BlockDeviceMappings'][0]['Ebs']['VolumeId']
+
+# Stop the instance before creating a snapshot
+ec2_client.stop_instances(InstanceIds=[instance_id])
+ec2_client.get_waiter('instance_stopped').wait(InstanceIds=[instance_id])
+
+# Create an initial snapshot
+response = ec2_client.create_snapshot(VolumeId=volume_id)
+snapshot_id = response['SnapshotId']
+
+# Wait for the snapshot to be completed
+ec2_client.get_waiter('snapshot_completed').wait(SnapshotIds=[snapshot_id])
+
+# Restart the instance
+ec2_client.start_instances(InstanceIds=[instance_id])
+ec2_client.get_waiter('instance_running').wait(InstanceIds=[instance_id])
+
+# Task 2.3: Scheduling the creation of subsequent snapshots
+
+# Create a cron job to take snapshots every minute
+cron_expression = '* * * * *'
+cron_command = f'aws ec2 create-snapshot --volume-id {volume_id} 2>&1 >> /tmp/cronlog'
+ec2_client.create_instance_export_task(InstanceId=instance_id, TargetEnvironment='cron',
+                                       CronExpression=cron_expression, Name='SnapshotCronJob',
+                                       Description='Scheduled snapshot job', CronJobCommand=cron_command)
+
+# Task 2.4: Retaining the last two snapshots
+# (Assuming you have a Python script named 'snapshotter_v2.py' uploaded to the instance)
+
+# Stop the cron job
+ec2_client.cancel_export_task(InstanceId=instance_id, ExportTaskId='SnapshotCronJob')
+
+# Run the Python script to retain the last two snapshots
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/home/ec2-user/snapshotter_v2.py')
+
+# Task 3: Challenge: Synchronize files with Amazon S3
+
+# Task 3.1: Downloading and unzipping sample files
+# (Assuming you have the 'wget' and 'unzip' commands available on your instance)
+
+# Download the sample files
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/usr/bin/wget',
+                            Args=['https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/CUR-TF-100-RSJAWS-1-23732/183-lab-JAWS-managing-storage/s3/files.zip'])
+
+# Unzip the files
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/usr/bin/unzip', Args=['files.zip'])
+
+# Task 3.2: Syncing files
+# (Assuming you have the 'aws' command available on your instance)
+
+# Activate versioning for the S3 bucket
+s3_client.put_bucket_versioning(Bucket=bucket_name, VersioningConfiguration={'Status': 'Enabled'})
+
+# Sync the contents of the files folder with the S3 bucket
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/usr/bin/aws',
+                            Args=['s3', 'sync', 'files', f's3://{bucket_name}/files/'])
+
+# Delete a local file and sync with S3 to delete it from S3
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/usr/bin/rm', Args=['files/file1.txt'])
+ec2_client.run_shell_script(InstanceId=instance_id, ScriptPath='/usr/bin/aws',
+                            Args=['s3', 'sync', 'files', f's3://{bucket_name}/files/', '--delete'])
