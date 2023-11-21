@@ -1,4 +1,3 @@
-
 import boto3
 
 # Specify the region and other details
