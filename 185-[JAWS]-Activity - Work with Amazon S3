@@ -1,0 +1,104 @@
+import boto3
+import json
+import time
+
+# Replace these values with your own
+access_key = 'YOUR_ACCESS_KEY'
+secret_key = 'YOUR_SECRET_KEY'
+region = 'us-west-2'
+bucket_name = 'cafe-xxxnnn'
+sns_topic_arn = 'YOUR_SNS_TOPIC_ARN'
+user_email = 'your@email.com'
+
+# Task 1: Connecting to the CLI Host EC2 instance and configuring the AWS CLI
+# No specific Boto3 code needed for this task as it involves manual configuration.
+
+# Task 2: Creating and initializing the S3 share bucket
+s3_client = boto3.client('s3', aws_access_key_id=access_key, aws_secret_access_key=secret_key, region_name=region)
+
+# Create S3 bucket
+s3_client.create_bucket(Bucket=bucket_name)
+
+# Upload initial images
+s3_client.upload_file('initial-images/Donuts.jpg', bucket_name, 'images/Donuts.jpg')
+
+# Verify uploaded files
+response = s3_client.list_objects(Bucket=bucket_name, Prefix='images/')
+for content in response.get('Contents', []):
+    print(content['Key'])
+
+# Task 3: Reviewing the IAM group and user permissions
+# No specific Boto3 code needed for this task as it involves IAM console actions.
+
+# Task 4: Configuring event notifications on the S3 share bucket
+sns_client = boto3.client('sns', aws_access_key_id=access_key, aws_secret_access_key=secret_key, region_name=region)
+
+# Create SNS topic
+response = sns_client.create_topic(Name='s3NotificationTopic')
+sns_topic_arn = response['TopicArn']
+
+# Configure topic access policy
+sns_client.set_topic_attributes(
+    TopicArn=sns_topic_arn,
+    AttributeName='Policy',
+    AttributeValue=json.dumps({
+        "Version": "2008-10-17",
+        "Id": "S3PublishPolicy",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "s3.amazonaws.com"
+                },
+                "Action": "SNS:Publish",
+                "Resource": sns_topic_arn,
+                "Condition": {
+                    "ArnLike": {
+                        "aws:SourceArn": f"arn:aws:s3:*:*:{bucket_name}"
+                    }
+                }
+            }
+        ]
+    })
+)
+
+# Subscribe to the topic
+response = sns_client.subscribe(
+    TopicArn=sns_topic_arn,
+    Protocol='email',
+    Endpoint=user_email
+)
+
+# Add event notification configuration to the S3 bucket
+s3_notification_config = {
+    "TopicConfigurations": [
+        {
+            "TopicArn": sns_topic_arn,
+            "Events": ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"],
+            "Filter": {
+                "Key": {
+                    "FilterRules": [
+                        {
+                            "Name": "prefix",
+                            "Value": "images/"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
+
+s3_client.put_bucket_notification_configuration(Bucket=bucket_name, NotificationConfiguration=s3_notification_config)
+
+# Task 5: Testing the S3 share bucket event notifications
+# Configure AWS CLI for mediacouser
+boto3.setup_default_session(aws_access_key_id='mediacouser-access-key', aws_secret_access_key='mediacouser-secret-key', region_name='us-west-2')
+
+# Upload an image to trigger an event
+s3_client.put_object(Bucket=bucket_name, Key='images/Caramel-Delight.jpg', Body=open('new-images/Caramel-Delight.jpg', 'rb'))
+
+# Check email for notification
+
+# Cleanup: Delete resources
+sns_client.delete_topic(TopicArn=sns_topic_arn)
