@@ -1,0 +1,29 @@
+import boto3
+
+# Initialize the Boto3 CloudWatch client
+cloudwatch_client = boto3.client('ssm')
+
+# Specify the instance IDs
+instance_ids = ['your-instance-id']
+
+# Install the CloudWatch agent
+response = cloudwatch_client.send_command(
+    InstanceIds=instance_ids,
+    DocumentName='AWS-ConfigureAWSPackage',
+    DocumentVersion='$LATEST',
+    Targets={
+        'key1': instance_ids
+    },
+    Parameters={
+        'action': ['Install'],
+        'name': ['AmazonCloudWatchAgent'],
+        'version': ['latest']
+    }
+)
+
+# Wait for the command to complete
+command_id = response['Command']['CommandId']
+cloudwatch_client.get_command_invocation(
+    CommandId=command_id,
+    InstanceId=instance_ids[0]
+)
