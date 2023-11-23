@@ -1,0 +1,69 @@
+import boto3
+import time
+import subprocess
+import json
+
+# Task 1: Modifying a security group
+ec2_client = boto3.client('ec2')
+
+# Replace 'your-instance-id' and 'your-security-group-id' with actual values
+instance_id = 'your-instance-id'
+security_group_id = 'your-security-group-id'
+
+# Add SSH rule to the security group
+ec2_client.authorize_security_group_ingress(
+    GroupId=security_group_id,
+    IpPermissions=[
+        {'IpProtocol': 'tcp', 'FromPort': 22, 'ToPort': 22, 'IpRanges': [{'CidrIp': 'YourIP/32'}]}
+    ]
+)
+
+# Task 2.1: Create a CloudTrail log
+cloudtrail_client = boto3.client('cloudtrail')
+
+# Replace 'your-s3-bucket-name' with your S3 bucket name
+s3_bucket_name = 'your-s3-bucket-name'
+trail_name = 'monitor'
+
+response = cloudtrail_client.create_trail(
+    Name=trail_name,
+    S3BucketName=s3_bucket_name
+)
+
+# Wait for the trail to be created
+time.sleep(10)
+
+# Task 2.2: Observe the hacked website
+# Refresh the Café website and wait for the hack
+
+# Task 3.1: Connect to the Café Web Server host EC2 instance by using SSH
+# Use subprocess to run the commands
+subprocess.run(["aws", "ec2", "associate-key-pair", "--instance-id", instance_id, "--key-name", "your-key-pair-name"])
+
+# Task 3.3: Download and extract the CloudTrail logs
+# Replace 'your-bucket-prefix' with the actual prefix
+bucket_prefix = 'your-bucket-prefix'
+
+subprocess.run(["aws", "s3", "cp", f"s3://{s3_bucket_name}/{bucket_prefix}", ".", "--recursive"])
+subprocess.run(["gunzip", "*.gz"])
+
+# Task 3.4: Analyze the logs by using grep
+log_files = subprocess.getoutput("ls")
+web_server_ip = "YourWebServerIP"
+
+for log_file in log_files.split('\n'):
+    print(f"Log file: {log_file}")
+    subprocess.run(["cat", log_file, "|", "python", "-m", "json.tool", "|", "grep", f'sourceIPAddress.*"{web_server_ip}"'])
+
+# Task 3.5: Analyze the logs by using AWS CLI CloudTrail commands
+# Use subprocess to run AWS CLI commands
+subprocess.run(["aws", "cloudtrail", "lookup-events", "--lookup-attributes", "AttributeKey=EventName,AttributeValue=ConsoleLogin"])
+subprocess.run(["aws", "cloudtrail", "lookup-events", "--lookup-attributes", "AttributeKey=ResourceType,AttributeValue=AWS::EC2::SecurityGroup", "--output", "text"])
+
+# Replace 'your-region' with your AWS region
+region = subprocess.getoutput("curl http://169.254.169.254/latest/dynamic/instance-identity/document|grep region | cut -d '\"' -f4")
+security_group_id_command = f"aws ec2 describe-instances --filters \"Name=tag:Name,Values='Cafe Web Server'\" --query 'Reservations[*].Instances[*].SecurityGroups[*].[GroupId]' --region {region} --output text"
+security_group_id = subprocess.getoutput(security_group_id_command).strip()
+print(f"Security Group ID: {security_group_id}")
+
+subprocess.run(["aws", "cloudtrail", "lookup-events", "--lookup-attributes", f"AttributeKey=ResourceType,AttributeValue=AWS::EC2::SecurityGroup", "--region", region, "--output", "text", "|", "grep", security_group_id])
