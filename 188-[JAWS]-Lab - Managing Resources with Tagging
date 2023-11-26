@@ -1,0 +1,64 @@
+import boto3
+
+# Connect to EC2
+ec2 = boto3.client('ec2')
+
+# Task 1: Using Tags to Manage Resources
+
+# Find instances in the development environment for the ERPSystem project
+response = ec2.describe_instances(
+    Filters=[
+        {'Name': 'tag:Project', 'Values': ['ERPSystem']},
+        {'Name': 'tag:Environment', 'Values': ['development']}
+    ]
+)
+
+# Extract relevant information from the response
+for reservation in response['Reservations']:
+    for instance in reservation['Instances']:
+        instance_id = instance['InstanceId']
+        project = [tag['Value'] for tag in instance['Tags'] if tag['Key'] == 'Project'][0]
+        environment = [tag['Value'] for tag in instance['Tags'] if tag['Key'] == 'Environment'][0]
+        version = [tag['Value'] for tag in instance['Tags'] if tag['Key'] == 'Version'][0]
+
+        print(f"Instance ID: {instance_id}, Project: {project}, Environment: {environment}, Version: {version}")
+
+# Task 2: Stop and Start Resources by Tag
+
+# Stop instances in the development environment for the ERPSystem project
+def stop_instances(tag_key, tag_value):
+    response = ec2.describe_instances(
+        Filters=[
+            {'Name': f'tag:{tag_key}', 'Values': [tag_value]},
+            {'Name': 'instance-state-name', 'Values': ['running']}
+        ]
+    )
+
+    instance_ids = [instance['InstanceId'] for reservation in response['Reservations'] for instance in reservation['Instances']]
+
+    if instance_ids:
+        print(f"Stopping instances: {instance_ids}")
+        ec2.stop_instances(InstanceIds=instance_ids)
+    else:
+        print("No instances to stop.")
+
+# Start instances in the development environment for the ERPSystem project
+def start_instances(tag_key, tag_value):
+    response = ec2.describe_instances(
+        Filters=[
+            {'Name': f'tag:{tag_key}', 'Values': [tag_value]},
+            {'Name': 'instance-state-name', 'Values': ['stopped']}
+        ]
+    )
+
+    instance_ids = [instance['InstanceId'] for reservation in response['Reservations'] for instance in reservation['Instances']]
+
+    if instance_ids:
+        print(f"Starting instances: {instance_ids}")
+        ec2.start_instances(InstanceIds=instance_ids)
+    else:
+        print("No instances to start.")
+
+# Example usage
+stop_instances('Project', 'ERPSystem')
+start_instances('Project', 'ERPSystem')
