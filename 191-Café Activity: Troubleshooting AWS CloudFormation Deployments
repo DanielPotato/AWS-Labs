@@ -1,0 +1,185 @@
+import boto3
+import time
+
+# Task 1: Practice querying JSON-formatted data by using JMESPath
+
+# Define the JSON document
+desserts_json = {
+    "desserts": [
+        {"name": "Chocolate cake", "price": "20.00"},
+        {"name": "Ice cream", "price": "15.00"},
+        {"name": "Carrot cake", "price": "22.00"}
+    ]
+}
+
+# Task 1 - Example JMESPath queries
+expression_1 = "desserts"
+expression_2 = "desserts[1]"
+expression_3 = "desserts[0].name"
+expression_4 = "desserts[0].[name,price]"
+expression_5 = "desserts[].name"
+expression_6 = "desserts[?name=='Carrot cake']"
+
+# Output results
+print(boto3.client('jmespath').search(expression_1, desserts_json))
+print(boto3.client('jmespath').search(expression_2, desserts_json))
+print(boto3.client('jmespath').search(expression_3, desserts_json))
+print(boto3.client('jmespath').search(expression_4, desserts_json))
+print(boto3.client('jmespath').search(expression_5, desserts_json))
+print(boto3.client('jmespath').search(expression_6, desserts_json))
+
+# Task 1 - AWS CloudFormation stack example
+stack_resources_json = {
+    "StackResources": [
+        {"LogicalResourceId": "VPC", "ResourceType": "AWS::EC2::VPC"},
+        {"LogicalResourceId": "PublicSubnet1", "ResourceType": "AWS::EC2::Subnet"},
+        {"LogicalResourceId": "CliHostInstance", "ResourceType": "AWS::EC2::Instance"}
+    ]
+}
+
+# Task 1 - JMESPath expression to retrieve the LogicalResourceId of the EC2 instance resource
+expression_ec2_logical_id = "StackResources[?ResourceType == 'AWS::EC2::Instance'].LogicalResourceId"
+print(boto3.client('jmespath').search(expression_ec2_logical_id, stack_resources_json))
+
+# Task 2: Troubleshooting and working with AWS CloudFormation stacks
+
+# Assume that you have already established an SSH connection to the CLI Host as mentioned in the lab
+
+# Task 2.2: Configure the AWS CLI
+
+# Get the region in which the CLI Host instance is running
+region = boto3.client('ec2').describe_instances()['Reservations'][0]['Instances'][0]['Placement']['AvailabilityZone'][:-1]
+
+# Update the AWS CLI software with credentials
+aws_access_key_id = "YOUR_ACCESS_KEY_ID"
+aws_secret_access_key = "YOUR_SECRET_ACCESS_KEY"
+
+boto3.client('configure', region_name=region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+
+# Task 2.3: Attempt to create an AWS CloudFormation stack
+
+# Example CloudFormation template
+template_body = """
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+"""
+
+# Create a stack
+cloudformation_client = boto3.client('cloudformation')
+stack_name = 'myStack'
+
+response_create_stack = cloudformation_client.create_stack(
+    StackName=stack_name,
+    TemplateBody=template_body,
+    Capabilities=['CAPABILITY_NAMED_IAM'],
+    Parameters=[{'ParameterKey': 'KeyName', 'ParameterValue': 'vockey'}]
+)
+
+# Check the status of stack resources
+while True:
+    response_stack_resources = cloudformation_client.describe_stack_resources(StackName=stack_name)
+    resources_status = [(res['ResourceType'], res['ResourceStatus']) for res in response_stack_resources['StackResources']]
+    print(resources_status)
+
+    if all(res_status[1] in ('CREATE_COMPLETE', 'CREATE_FAILED') for res_status in resources_status):
+        break
+
+    time.sleep(5)
+
+# Analyze the issue
+response_stack_events = cloudformation_client.describe_stack_events(StackName=stack_name)
+failed_events = [event for event in response_stack_events['StackEvents'] if event['ResourceStatus'] == 'CREATE_FAILED']
+print(failed_events)
+
+# Task 2.4: Avoid rollback on an AWS CloudFormation stack
+
+# Update the template to fix the issue
+template_body_fixed = """
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0c55b159cbfafe1f0
+"""
+
+# Update the stack with the fixed template
+response_update_stack = cloudformation_client.update_stack(
+    StackName=stack_name,
+    TemplateBody=template_body_fixed,
+    Parameters=[{'ParameterKey': 'KeyName', 'ParameterValue': 'vockey'}],
+    Capabilities=['CAPABILITY_NAMED_IAM'],
+    OnFailure='DO_NOTHING'
+)
+
+# Check the status of stack resources after update
+while True:
+    response_stack_resources = cloudformation_client.describe_stack_resources(StackName=stack_name)
+    resources_status = [(res['ResourceType'], res['ResourceStatus']) for res in response_stack_resources['StackResources']]
+    print(resources_status)
+
+    if all(res_status[1] in ('CREATE_COMPLETE', 'CREATE_FAILED') for res_status in resources_status):
+        break
+
+    time.sleep(5)
+
+# Task 3: Make manual modifications and detect drift
+
+# Task 3.1: Make manual modifications to the security groups
+
+# Assume you have the security group id
+security_group_id = 'sg-0123456789abcdef0'
+
+# Modify the existing SSH inbound rule
+ec2_client = boto3.client('ec2')
+ec2_client.authorize_security_group_ingress(
+    GroupId=security_group_id,
+    IpPermissions=[
+        {
+            'FromPort': 22,
+            'ToPort': 22,
+            'IpProtocol': 'tcp',
+            'IpRanges': [{'CidrIp': 'YOUR_IP_ADDRESS/32'}]
+        }
+    ]
+)
+
+# Task 3.2: Add an object to the S3 bucket
+
+# Get the S3 bucket name
+s3_bucket_name = response_update_stack['StackId'].split('/')[-1]
+
+# Create an empty file
+with open('myfile', 'w') as file:
+    file.write('')
+
+# Upload the file to the S3 bucket
+s3_client = boto3.client('s3')
+s3_client.upload_file('myfile', s3_bucket_name, 'myfile')
+
+# Verify that the file is in the bucket
+response_list_objects = s3_client.list_objects(Bucket=s3_bucket_name)
+print(response_list_objects['Contents'])
+
+# Task 3.3: Detect drift
+
+# Start drift detection on the stack
+response_detect_drift = cloudformation_client.detect_stack_drift(StackName=stack_name)
+drift_detection_id = response_detect_drift['StackDriftDetectionId']
+
+# Monitor the status of drift detection
+while True:
+    response_drift_status = cloudformation_client.describe_stack_drift_detection_status(StackDriftDetectionId=drift_detection_id)
+    print(response_drift_status['StackDriftStatus'])
+
+    if response_drift_status['StackDriftStatus'] == 'DETECTION_COMPLETE':
+        break
+
+    time.sleep(5)
+
+# Get the drift detection results
+response_drift_results = cloudformation_client.describe_stack_resource_drifts(StackDriftDetectionId=drift_detection_id)
+drifted_resources = [res['LogicalResourceId'] for res in response_drift_results['StackResourceDrifts']]
+print(drifted_resources)
